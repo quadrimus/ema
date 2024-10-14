@@ -1,0 +1,69 @@
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GO_VERSION: 1.23.2
+
+jobs:
+  build-executable-windows-amd64:
+    name: Build executable (windows, amd64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Go modules download
+        run: go mod download
+      - name: Go Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          $v=$Env:VERSION.Trim('v')
+          go build -ldflags "-s -X quadrimus.com/ema.version=${v}" -o "ema-${v}.exe" -trimpath cmd/ema/main.go
+      - name: Pack release
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          $v=$Env:VERSION.Trim('v')
+          Compress-Archive -DestinationPath "ema-${v}-windows-amd64.zip" -Path "ema-${v}.exe",LICENSE
+      - name: Upload release
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          $v=$Env:VERSION.Trim('v')
+          gh release upload ${{ github.ref_name }} "ema-${v}-windows-amd64.zip"
+  build-executable:
+    name: Build executable
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [freebsd, linux, netbsd, openbsd]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Go modules download
+        run: go mod download
+      - name: Go Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
+        run: go build -ldflags "-s -X quadrimus.com/ema.version=${VERSION#v}" -o "ema-${VERSION#v}" -trimpath cmd/ema/main.go
+      - name: Pack release
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: zip "ema-${VERSION#v}-${{ matrix.goos }}-${{ matrix.goarch }}.zip" "ema-${VERSION#v}" LICENSE
+      - name: Upload release
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: gh release upload ${{ github.ref_name }} "ema-${VERSION#v}-${{ matrix.goos }}-${{ matrix.goarch }}.zip"
